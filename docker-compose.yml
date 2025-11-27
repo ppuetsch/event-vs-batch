@@ -1,0 +1,46 @@
+x-restart-policy: &restart_policy
+  restart: on-failure:3
+
+services:
+  kafka:
+    container_name: kafka
+    image: confluentinc/cp-kafka:8.0.0
+    ports:
+      - "9091:9091"
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_PROCESS_ROLES: controller,broker
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: CONTROLLER://0.0.0.0:9093,INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:9091
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_ADVERTISED_LISTENERS: EXTERNAL://localhost:9091, INTERNAL://kafka:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: "Mk3OEYBSD34fcwNTJENDM2Rk"
+    <<: *restart_policy
+    healthcheck:
+      test: kafka-broker-api-versions --bootstrap-server kafka:9092
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+  kafbat-ui:
+    image: ghcr.io/kafbat/kafka-ui:latest
+    container_name: kafbat-ui
+    ports:
+      - "9090:9090"
+    environment:
+      SERVER_PORT: 9090
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    <<: *restart_policy
+    depends_on:
+      kafka:
+        condition: service_healthy

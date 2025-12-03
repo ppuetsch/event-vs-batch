@@ -48,12 +48,11 @@ class ProcessingController(
     }
 
     @PostMapping("/startProcessingBatched")
-    fun startProcessingBatched() {
-
-
+    fun startProcessingBatched(@RequestParam(required = false) uuid: UUID?) {
+        val usedUuid = uuid ?: UUID.randomUUID()
         val jobParameters = JobParametersBuilder()
-            .addLong("startAt", System.currentTimeMillis())
-            .addString("UUID", UUID.randomUUID().toString(), true)
+            .addLong("startAt", System.currentTimeMillis(), false)
+            .addString("UUID", usedUuid.toString(), true)
             .toJobParameters()
         println("Job wird mit Parametern gestartet: $jobParameters")
         jobOperator.start(enrichmentJob, jobParameters)

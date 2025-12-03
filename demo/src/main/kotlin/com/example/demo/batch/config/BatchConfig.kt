@@ -8,10 +8,12 @@ import com.example.demo.infrastructure.repository.BaseEntityRepository
 import com.example.demo.infrastructure.repository.EnrichedBaseEntityRepository
 import com.example.demo.infrastructure.repository.TripleEnrichedBaseEntityRepository
 import com.example.demo.infrastructure.repository.TwiceEnrichedBaseEntityRepository
+import org.slf4j.LoggerFactory
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing
 import org.springframework.batch.core.configuration.annotation.EnableJdbcJobRepository
 import org.springframework.batch.core.job.Job
 import org.springframework.batch.core.job.builder.JobBuilder
+import org.springframework.batch.core.listener.ItemProcessListener
 import org.springframework.batch.core.repository.JobRepository
 import org.springframework.batch.core.step.Step
 import org.springframework.batch.core.step.builder.StepBuilder
@@ -29,10 +31,14 @@ class BatchConfig  (
     val baseEntityRepository: BaseEntityRepository,
     val enrichedBaseEntityRepository: EnrichedBaseEntityRepository,
     val twiceEnrichedBaseEntityRepository: TwiceEnrichedBaseEntityRepository,
-    val tripleEnrichedBaseEntityRepository: TripleEnrichedBaseEntityRepository
+    val tripleEnrichedBaseEntityRepository: TripleEnrichedBaseEntityRepository,
+    val jobRepository: JobRepository
 ){
+    companion object {
+        private val logger = LoggerFactory.getLogger(BatchConfig::class.java)
+    }
 
-    val chunkSize = 100
+    val chunkSize = 1
 
     @Bean
     fun baseEntityReader(): RepositoryItemReader<BaseEntity>
@@ -69,21 +75,19 @@ class BatchConfig  (
 
 
     @Bean
-    fun enrichmentJob(jobRepository: JobRepository): Job? {
+    fun enrichmentJob(): Job? {
         return JobBuilder("enrichmentJob", jobRepository)
-            .start(enrichBaseStep(jobRepository))
-            .next(twichEnrichStep(jobRepository))
-            .next(tripleEnrichStep(jobRepository))
+            .start(enrichBaseStep())
+            .next(twiceEnrichStep())
+            .next(tripleEnrichStep())
             .build()
     }
 
     @Bean
     fun enrichBaseStep(
-        jobRepository: JobRepository,
-
     ): Step {
         return StepBuilder(jobRepository)
-            .chunk<BaseEntity, EnrichedBaseEntity>(3)
+            .chunk<BaseEntity, EnrichedBaseEntity>(chunkSize)
             .reader(baseEntityReader())
             .processor(BaseItemProcessor())
             .writer(enrichedBaseEntityWriter())
@@ -91,24 +95,35 @@ class BatchConfig  (
     }
 
     @Bean
-    fun twichEnrichStep(jobRepository: JobRepository): Step {
-        return StepBuilder(jobRepository)
-            .chunk<EnrichedBaseEntity, TwiceEnrichedBaseEntity>(3)
+    fun twiceEnrichStep(): Step {
+        return StepBuilder("twiceEnrichStep", jobRepository)
+            .chunk<EnrichedBaseEntity, TwiceEnrichedBaseEntity>(chunkSize)
             .reader(enrichedBaseEntityReader())
             .processor(EnrichedItemProcessor())
             .writer(twiceEnrichedBaseEntityWriter())
             .build()
     }
     @Bean
-    fun tripleEnrichStep(jobRepository: JobRepository): Step {
-        return StepBuilder(jobRepository)
-            .chunk<TwiceEnrichedBaseEntity, TripleEnrichedBaseEntity>(3)
+    fun tripleEnrichStep(): Step {
+        return StepBuilder("tripleEnrichStep", jobRepository)
+            .chunk<TwiceEnrichedBaseEntity, TripleEnrichedBaseEntity>(chunkSize)
             .reader(twiceEnrichedBaseEntityReader())
             .processor(TwiceEnrichedItemProcessor())
-            .writer(tripleEnrichedBaseEntityWriter())
+            .listener(object : ItemProcessListener<
+                    TwiceEnrichedBaseEntity,
+                    TripleEnrichedBaseEntity> {
+
+                override fun onProcessError(
+                    item: TwiceEnrichedBaseEntity,
+                    e: Exception
+                ) {
+                    logger.warn("Retry bei ${item.id} : ${e?.message}")
+                }
+            })
             .faultTolerant()
             .retryLimit(3)
             .retry(RetryableException::class.java)
+            .writer(tripleEnrichedBaseEntityWriter())
             .build()
     }
 

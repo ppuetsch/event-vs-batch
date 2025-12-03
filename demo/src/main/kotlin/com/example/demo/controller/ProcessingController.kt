@@ -25,7 +25,8 @@ class ProcessingController(
     val twiceEnrichedBaseEntityRepository: TwiceEnrichedBaseEntityRepository,
     val tripleEnrichedBaseEntityRepository: TripleEnrichedBaseEntityRepository,
     val kafkaService: KafkaService,
-    val enrichmentJob: Job
+    val enrichmentJob: Job,
+    val jobOperator: JobOperator
 ) {
 
     @GetMapping("/status/")
@@ -48,11 +49,13 @@ class ProcessingController(
 
     @PostMapping("/startProcessingBatched")
     fun startProcessingBatched() {
-        val jobOperator: JobOperator = DefaultBatchConfiguration().jobOperator(DefaultBatchConfiguration().jobRepository())
+
 
         val jobParameters = JobParametersBuilder()
             .addLong("startAt", System.currentTimeMillis())
+            .addString("UUID", UUID.randomUUID().toString(), true)
             .toJobParameters()
+        println("Job wird mit Parametern gestartet: $jobParameters")
         jobOperator.start(enrichmentJob, jobParameters)
     }
 

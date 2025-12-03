@@ -2,78 +2,113 @@ package com.example.demo.batch.config
 
 import com.example.demo.infrastructure.model.BaseEntity
 import com.example.demo.infrastructure.model.EnrichedBaseEntity
+import com.example.demo.infrastructure.model.TripleEnrichedBaseEntity
 import com.example.demo.infrastructure.model.TwiceEnrichedBaseEntity
-import jakarta.persistence.EntityManagerFactory
-import org.springframework.batch.core.configuration.support.DefaultBatchConfiguration
+import com.example.demo.infrastructure.repository.BaseEntityRepository
+import com.example.demo.infrastructure.repository.EnrichedBaseEntityRepository
+import com.example.demo.infrastructure.repository.TripleEnrichedBaseEntityRepository
+import com.example.demo.infrastructure.repository.TwiceEnrichedBaseEntityRepository
+import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing
+import org.springframework.batch.core.configuration.annotation.EnableJdbcJobRepository
 import org.springframework.batch.core.job.Job
 import org.springframework.batch.core.job.builder.JobBuilder
 import org.springframework.batch.core.repository.JobRepository
 import org.springframework.batch.core.step.Step
 import org.springframework.batch.core.step.builder.StepBuilder
-import org.springframework.batch.infrastructure.item.database.JpaCursorItemReader
-import org.springframework.batch.infrastructure.item.database.JpaItemWriter
+import org.springframework.batch.infrastructure.item.data.RepositoryItemReader
+import org.springframework.batch.infrastructure.item.data.RepositoryItemWriter
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.jdbc.datasource.DataSourceTransactionManager
+import org.springframework.data.domain.Sort
 
 
 @Configuration
+@EnableBatchProcessing
+@EnableJdbcJobRepository
 class BatchConfig  (
-    val entityManagerFactory: EntityManagerFactory
-) : DefaultBatchConfiguration() {
+    val baseEntityRepository: BaseEntityRepository,
+    val enrichedBaseEntityRepository: EnrichedBaseEntityRepository,
+    val twiceEnrichedBaseEntityRepository: TwiceEnrichedBaseEntityRepository,
+    val tripleEnrichedBaseEntityRepository: TripleEnrichedBaseEntityRepository
+){
+
+    val chunkSize = 100
 
     @Bean
-    fun baseEntityReader(): JpaCursorItemReader<BaseEntity> = JpaCursorItemReader(entityManagerFactory)
+    fun baseEntityReader(): RepositoryItemReader<BaseEntity>
+        = setReaderMethodAndSize(RepositoryItemReader(baseEntityRepository, mapByIdAsc()))
 
     @Bean
-    fun enrichedBaseEntityReader(): JpaCursorItemReader<EnrichedBaseEntity> = JpaCursorItemReader(entityManagerFactory)
+    fun enrichedBaseEntityReader(): RepositoryItemReader<EnrichedBaseEntity> =
+        setReaderMethodAndSize(RepositoryItemReader(enrichedBaseEntityRepository, mapByIdAsc()))
 
     @Bean
-    fun twicheEnrichedBaseEntityReader(): JpaCursorItemReader<TwiceEnrichedBaseEntity> = JpaCursorItemReader(entityManagerFactory)
+    fun twiceEnrichedBaseEntityReader(): RepositoryItemReader<TwiceEnrichedBaseEntity> =
+        setReaderMethodAndSize(RepositoryItemReader(twiceEnrichedBaseEntityRepository, mapByIdAsc()))
+
+
+    private fun <T : Any> setReaderMethodAndSize(reader: RepositoryItemReader<T>): RepositoryItemReader<T> {
+        reader.setMethodName("findAll")
+        reader.setPageSize(chunkSize)
+        return reader
+    }
+
+    private fun mapByIdAsc(): Map<String, Sort.Direction> = mapOf("id" to Sort.Direction.ASC)
+
+    @Bean
+    fun baseEntityWriter(): RepositoryItemWriter<BaseEntity> = RepositoryItemWriter(baseEntityRepository)
+
+    @Bean
+    fun enrichedBaseEntityWriter(): RepositoryItemWriter<EnrichedBaseEntity> = RepositoryItemWriter(enrichedBaseEntityRepository)
+
+    @Bean
+    fun twiceEnrichedBaseEntityWriter(): RepositoryItemWriter<TwiceEnrichedBaseEntity> = RepositoryItemWriter(twiceEnrichedBaseEntityRepository)
+
+    @Bean
+    fun tripleEnrichedBaseEntityWriter(): RepositoryItemWriter<TripleEnrichedBaseEntity> = RepositoryItemWriter(tripleEnrichedBaseEntityRepository)
 
 
     @Bean
-    fun baseEntityWriter(): JpaItemWriter<BaseEntity> = JpaItemWriter(entityManagerFactory)
-
-    @Bean
-    fun enrichedBaseEntityWriter(): JpaItemWriter<EnrichedBaseEntity> = JpaItemWriter(entityManagerFactory)
-
-    @Bean
-    fun twicheEnrichedBaseEntityWriter(): JpaItemWriter<TwiceEnrichedBaseEntity> = JpaItemWriter(entityManagerFactory)
-
-    @Bean
-    fun enrichmentJob(jobRepository: JobRepository, enrichBaseEntity: Step, twichEnrichBaseEntity: Step): Job? {
+    fun enrichmentJob(jobRepository: JobRepository): Job? {
         return JobBuilder("enrichmentJob", jobRepository)
-            .start(enrichBaseEntity)
-            .next(twichEnrichBaseEntity)
+            .start(enrichBaseStep(jobRepository))
+            .next(twichEnrichStep(jobRepository))
+            .next(tripleEnrichStep(jobRepository))
             .build()
     }
 
     @Bean
-    fun enrichBaseEntity(
-        jobRepository: JobRepository, transactionManager: DataSourceTransactionManager,
-        baseEntityReader: JpaCursorItemReader<BaseEntity>, processor: BaseItemProcessor, writer: JpaItemWriter<EnrichedBaseEntity>,
+    fun enrichBaseStep(
+        jobRepository: JobRepository,
+
     ): Step {
         return StepBuilder(jobRepository)
             .chunk<BaseEntity, EnrichedBaseEntity>(3)
-            .transactionManager(transactionManager)
-            .reader(baseEntityReader)
-            .processor(processor)
-            .writer(writer)
+            .reader(baseEntityReader())
+            .processor(BaseItemProcessor())
+            .writer(enrichedBaseEntityWriter())
             .build()
     }
 
     @Bean
-    fun twichEnrichBaseEntity(
-        jobRepository: JobRepository, transactionManager: DataSourceTransactionManager,
-        enrichedBaseEntityReader: JpaCursorItemReader<EnrichedBaseEntity>, processor: EnrichedItemProcessor, writer: JpaItemWriter<TwiceEnrichedBaseEntity>,
-    ): Step {
+    fun twichEnrichStep(jobRepository: JobRepository): Step {
         return StepBuilder(jobRepository)
             .chunk<EnrichedBaseEntity, TwiceEnrichedBaseEntity>(3)
-            .transactionManager(transactionManager)
-            .reader(enrichedBaseEntityReader)
-            .processor(processor)
-            .writer(writer)
+            .reader(enrichedBaseEntityReader())
+            .processor(EnrichedItemProcessor())
+            .writer(twiceEnrichedBaseEntityWriter())
+            .build()
+    }
+    @Bean
+    fun tripleEnrichStep(jobRepository: JobRepository): Step {
+        return StepBuilder(jobRepository)
+            .chunk<TwiceEnrichedBaseEntity, TripleEnrichedBaseEntity>(3)
+            .reader(twiceEnrichedBaseEntityReader())
+            .processor(TwiceEnrichedItemProcessor())
+            .writer(tripleEnrichedBaseEntityWriter())
+            .faultTolerant()
+            .retryLimit(3)
+            .retry(RetryableException::class.java)
             .build()
     }
 

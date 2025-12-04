@@ -22,15 +22,22 @@ Tabellen eingesehen werden (`GET /status`). Die Ausgangslage
 kann hergestellt werden, indem `n` BaseEntitties in die Datenbank geschrieben werden (`POST /initializeDatabase` ).
 Die Prozessierung kann mittels `POST /startProcessingEventBased` bzw. `POST /startProcessingBatched` gestartet werden.
 
-## event
+## Starten der Applikation
 
 Um die Demo-Applikation im event-Fall zu benutzen:
 * Die Applikation kann über die Swagger-UI gesteuert werden. Zuerst Entities anlegen, dann die Prozessierung starten.
 * Zum Debuggen können einzelne KafkaMessages gesendet werden (`POST /sendKafkaMessage`)
-* Der Status der Prozessierung kann über die Swagger-UI eingesehen werden. Man sieht wie sich nach und nach die
-  Füllstände der verschiedenen Enrichements füllen. Zu bemerken ist dabei, dass einzelne Events sehr früh bereits
+* Der Status der Prozessierung kann über die Swagger-UI eingesehen werden.
+
+## event
+
+Um die Demo-Applikation im event-Fall zu benutzen:
+* Man sieht wie sich nach und nach die Füllstände der verschiedenen Enrichements füllen. Zu bemerken ist dabei, dass einzelne Events sehr früh bereits
   tripleEnriched sind - und zwar bevor alle Events überhaupt fertig enriched sind
 * Weiterhin kann die Situation in Kafka über die Kafka-UI kafbat inspiziert werden. Dazu auf `http://localhost:9090/` navigieren
 
 ## batch
-To be done
+* Man muss sich leider aufgrund eines der Demo geschuldeten Problems fehlende Flyway-Anbindung und aktuellen Problemen mit dem 
+  automatischen Anlegen der Batch Job Tabellen händisch um die Batch Job Tabellen kümmern. Dazu wurde die DB von inmemory H2 
+  auf eine file-basierte H2-Datenbank umgestellt. Man muss ich dann mit der DB verbinden (url ist in der appilication.properties-file zu finden)
+  und das sql-Script `demo/src/main/resources/init_job_tables.sql` ausführen.

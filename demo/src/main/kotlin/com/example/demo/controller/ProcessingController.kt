@@ -6,6 +6,10 @@ import com.example.demo.infrastructure.repository.EnrichedBaseEntityRepository
 import com.example.demo.infrastructure.repository.TripleEnrichedBaseEntityRepository
 import com.example.demo.infrastructure.repository.TwiceEnrichedBaseEntityRepository
 import com.example.demo.service.KafkaService
+import org.springframework.batch.core.configuration.support.DefaultBatchConfiguration
+import org.springframework.batch.core.job.Job
+import org.springframework.batch.core.job.parameters.JobParametersBuilder
+import org.springframework.batch.core.launch.JobOperator
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -21,6 +25,8 @@ class ProcessingController(
     val twiceEnrichedBaseEntityRepository: TwiceEnrichedBaseEntityRepository,
     val tripleEnrichedBaseEntityRepository: TripleEnrichedBaseEntityRepository,
     val kafkaService: KafkaService,
+    val enrichmentJob: Job,
+    val jobOperator: JobOperator
 ) {
 
     @GetMapping("/status/")
@@ -42,8 +48,14 @@ class ProcessingController(
     }
 
     @PostMapping("/startProcessingBatched")
-    fun startProcessingBatched() {
-        throw NotImplementedError("Not implemented yet")
+    fun startProcessingBatched(@RequestParam(required = false) uuid: UUID?) {
+        val usedUuid = uuid ?: UUID.randomUUID()
+        val jobParameters = JobParametersBuilder()
+            .addLong("startAt", System.currentTimeMillis(), false)
+            .addString("UUID", usedUuid.toString(), true)
+            .toJobParameters()
+        println("Job wird mit Parametern gestartet: $jobParameters")
+        jobOperator.start(enrichmentJob, jobParameters)
     }
 
 
